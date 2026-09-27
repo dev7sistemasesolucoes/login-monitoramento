@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <title>Aplicação Web - Google OAuth</title>
+  
+  <!-- SDK Oficial do Google Identity Services -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+
+  <style>
+    body { font-family: Arial, sans-serif; padding: 30px; text-align: center; }
+    .card { max-width: 400px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px; }
+    .btn-google {
+      background-color: #4285f4; color: white; border: none; padding: 12px 24px;
+      font-size: 16px; border-radius: 4px; cursor: pointer; font-weight: bold;
+    }
+    .btn-google:hover { background-color: #357ae8; }
+    #conteudo-privado { display: none; }
+    #status { margin-top: 15px; font-weight: bold; }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <div id="area-login">
+      <h2>Acesso ao Sistema</h2>
+      <p>Clique abaixo para se identificar com sua conta Google:</p>
+      
+      <button class="btn-google" onclick="fazerLogin()">Entrar com o Google</button>
+      <div id="status"></div>
+    </div>
+
+    <div id="conteudo-privado">
+      <h3>Bem-vindo, <span id="user-name"></span>!</h3>
+      <p>Seu e-mail: <strong id="user-email"></strong></p>
+    </div>
+  </div>
+
+  <script>
+
+    console.log("URL:", window.location.href);
+    console.log("Origin:", window.location.origin);
+
+    // Configurações do OAuth 2.0 (Google Cloud Console)
+    const CLIENT_ID = '537976580260-u4rumt1qlsnbnnb6m2fjbvbq6qvig0ah.apps.googleusercontent.com';
+    let tokenClient;
+
+    // Função executada quando a janela termina de carregar
+    window.onload = function() {
+      if (typeof google !== 'undefined') {
+        tokenClient = google.accounts.oauth2.initTokenClient({
+          client_id: CLIENT_ID,
+          scope: 'https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
+          callback: processarRespostaOAuth,
+        });
+      }
+    };
+
+    function fazerLogin() {
+      document.getElementById('status').style.color = "blue";
+      document.getElementById('status').innerText = "Aguardando confirmação no pop-up...";
+      
+      if (tokenClient) {
+        // Solicita o token de acesso (abre a janela pop-up do Google)
+        tokenClient.requestAccessToken({ prompt: 'consent' });
+      } else {
+        document.getElementById('status').style.color = "red";
+        document.getElementById('status').innerText = "Erro: SDK do Google não carregado.";
+      }
+    }
+
+    // Processa a resposta após o usuário autorizar o acesso no pop-up
+    function processarRespostaOAuth(response) {
+      if (response.error) {
+        document.getElementById('status').style.color = "red";
+        document.getElementById('status').innerText = "Erro na autenticação: " + response.error;
+        return;
+      }
+
+      document.getElementById('status').innerText = "Obtendo dados do perfil...";
+
+      // Busca os dados do usuário usando o Access Token retornado
+      fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: {
+          'Authorization': `Bearer ${response.access_token}`
+        }
+      })
+      .then(res => res.json())
+      .then(user => {
+        document.getElementById('status').innerText = "Registrando dados...";
+
+        // Envia os dados validados para o Apps Script Backend (Code.gs)
+        google.script.run
+          .withSuccessHandler(function() {
+            document.getElementById('area-login').style.display = 'none';
+            document.getElementById('conteudo-privado').style.display = 'block';
+            document.getElementById('user-name').innerText = user.name;
+            document.getElementById('user-email').innerText = user.email;
+          })
+          .withFailureHandler(function(err) {
+            document.getElementById('status').style.color = "red";
+            document.getElementById('status').innerText = "Erro no registro: " + err.message;
+          })
+          .registrarEmail(user.email, user.name);
+      })
+      .catch(err => {
+        document.getElementById('status').style.color = "red";
+        document.getElementById('status').innerText = "Erro ao buscar dados do usuário: " + err.message;
+      });
+    }
+  </script>
+</body>
+</html>
